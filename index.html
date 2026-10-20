@@ -3173,13 +3173,22 @@ function isLocalFile(){
 function probeAudio(){
   if(audioProbe) return audioProbe;
   audioProbe=new Promise(function(res){
-    var t=setTimeout(function(){ res(false); },3500);
+    var t=setTimeout(function(){ res(false); },6000);
+    var urls=audioUrlList(firstAudioId()||'__none__');
+    var ui=0;
     try{
       var a=new Audio();
       a.preload='auto';
       a.oncanplaythrough=function(){ clearTimeout(t); res(true); };
-      a.onerror=function(){ clearTimeout(t); res(false); };
-      a.src=AUDIO_BASE+AUDIO_VOICE+'/'+(firstAudioId()||'__none__')+'.mp3';
+      a.onerror=function(){
+        /* 换下一个候选地址再试 */
+        if(ui<urls.length-1){
+          ui++;
+          try{ a.src=urls[ui]; a.load(); return; }catch(e){}
+        }
+        clearTimeout(t); res(false);
+      };
+      a.src=urls[0];
     }catch(e){ clearTimeout(t); res(false); }
   });
   return audioProbe;
@@ -3198,9 +3207,19 @@ function audioIdFor(textId,kind,idx){
   if(!arr||idx<0||idx>=arr.length) return '';
   return arr[idx];
 }
+/* 音频候选地址：优先同目录相对路径（离线可用、库内托管可用）；
+   若相对路径取不到（页面被托管在别处），回退到线上仓库地址。
+   这样同一份 html 无论放本地、GitHub Pages 还是资料库都能出声。 */
+function audioUrlList(id){
+  if(!id) return [];
+  var rel=AUDIO_BASE+AUDIO_VOICE+'/'+id+'.mp3';
+  /* 已经在线上仓库域名下时不必再试绝对地址 */
+  if(location.hostname==='andy-wei0821.github.io') return [rel];
+  return [rel, SITE_URL+AUDIO_BASE+AUDIO_VOICE+'/'+id+'.mp3'];
+}
 function audioUrl(id){
-  if(!id) return '';
-  return AUDIO_BASE+AUDIO_VOICE+'/'+id+'.mp3';
+  var l=audioUrlList(id);
+  return l.length?l[0]:'';
 }
 function getAudioEl(){
   if(!audioEl){
@@ -3356,6 +3375,8 @@ function playMp3(id,cb,tk){
   var a=getAudioEl();
   var atk=audioToken;
   var done=false;
+  var urls=audioUrlList(id);
+  var ui=0;
   function finish(fallback){
     if(done) return; done=true;
     a.onended=null; a.onerror=null;
@@ -3364,14 +3385,24 @@ function playMp3(id,cb,tk){
   a.onended=function(){ finish(false); };
   a.onerror=function(){
     if(atk!==audioToken) return;
-    /* 音频取不到 → 标记主路不可用，后续直接走系统语音 */
+    /* 换下一个候选地址重试（相对路径失败时走线上仓库地址） */
+    if(ui<urls.length){
+      ui++;
+      try{
+        a.src=urls[ui]; a.currentTime=0; a.load();
+        var p2=a.play();
+        if(p2&&p2.catch) p2.catch(function(){});
+        return;
+      }catch(e){ if(a.onerror) a.onerror(); return; }
+    }
+    /* 所有候选都取不到 → 标记主路不可用，后续直接走系统语音 */
     mp3Broken=true;
     audioReady=false;
     finish(true);
   };
   try{
     a.playbackRate=rate;
-    a.src=audioUrl(id);
+    a.src=urls[0];
     a.currentTime=0;
     var p=a.play();
     if(p&&p.catch) p.catch(function(){
@@ -3482,16 +3513,27 @@ function sampleAudio(){
   if(!id){ speaking=false; sampleVoice(''); return; }
   var a=getAudioEl();
   var atk=audioToken;
+  var urls=audioUrlList(id);
+  var ui=0;
   a.onended=function(){ speaking=false; };
   a.onerror=function(){
     if(atk!==audioToken) return;
+    if(ui<urls.length-1){
+      ui++;
+      try{
+        a.src=urls[ui]; a.currentTime=0; a.load();
+        var p2=a.play();
+        if(p2&&p2.catch) p2.catch(function(){});
+        return;
+      }catch(e){ if(a.onerror) a.onerror(); return; }
+    }
     mp3Broken=true; audioReady=false;
     speaking=false;
     sampleVoice('');
   };
   try{
     a.playbackRate=rate;
-    a.src=audioUrl(id);
+    a.src=urls[0];
     a.currentTime=0;
     var p=a.play();
     if(p&&p.catch) p.catch(function(){ speaking=false; });
