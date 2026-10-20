@@ -162,6 +162,52 @@ button{font-family:inherit;cursor:pointer;}
   padding:8px 12px;border-radius:8px;margin-bottom:14px;
 }
 
+/* ---------- 朗读环境提示条（微信 / 浏览器） ---------- */
+.wxbar{
+  background:#fff4e5;border:1px solid #f0c98a;border-left:4px solid #d9822b;
+  border-radius:10px;padding:12px 14px;margin:0 0 14px;
+  font-size:12.5px;line-height:1.9;color:#6b4210;
+}
+.wxbar b{color:#8a4d06;}
+.wxbar .wx-t{font-size:13.5px;font-weight:700;margin-bottom:4px;color:#8a4d06;}
+.wxbar ol{margin:6px 0 0;padding-left:20px;}
+.wxbar ol li{margin:3px 0;}
+.wxbar .wx-close{
+  float:right;border:1px solid #e0b571;background:#fff;color:#8a4d06;
+  border-radius:6px;font-size:11px;padding:2px 8px;line-height:1.6;cursor:pointer;
+}
+/* 语音质量体检 */
+.vdiag{
+  margin:8px 0 0;padding:9px 11px;border-radius:8px;
+  background:#f3f1ea;border:1px solid var(--line);
+  font-size:11.5px;line-height:1.9;color:var(--ink-2);
+}
+.vdiag .vd-row{display:flex;gap:8px;align-items:flex-start;margin:3px 0;}
+.vdiag .vd-row>b{flex:0 0 84px;color:var(--muted);font-weight:600;}
+.vdiag .vd-row>span{flex:1;min-width:0;}
+.vdiag .vd-good{color:var(--green);font-weight:600;}
+.vdiag .vd-warn{color:#b06a10;font-weight:600;}
+.vdiag .vd-bad{color:var(--accent);font-weight:600;}
+.vdiag .vd-tag{
+  display:inline-block;background:#fff;border:1px solid var(--line);
+  border-radius:5px;padding:0 6px;font-size:11px;margin:0 3px 3px 0;
+}
+/* 预生成音色单选 */
+.vopts{margin:6px 0 2px;display:flex;flex-direction:column;gap:6px;}
+.vopt{
+  display:flex;align-items:baseline;gap:8px;cursor:pointer;
+  background:#fff;border:1px solid var(--line);border-radius:9px;
+  padding:9px 11px;font-size:12.5px;line-height:1.7;
+}
+.vopt:hover{border-color:#c9c0b0;}
+.vopt input{margin:0;flex:0 0 auto;accent-color:var(--accent);}
+.vopt b{color:var(--ink);font-weight:600;}
+.vopt span{color:var(--muted);font-size:11.5px;}
+.vcard code{
+  background:#f1ece2;border-radius:4px;padding:1px 4px;
+  font-family:Consolas,Monaco,monospace;font-size:11px;color:#6b4a1f;
+}
+
 /* 默写 */
 .ditem{
   background:var(--card);border:1px solid var(--line);border-radius:10px;
@@ -343,6 +389,10 @@ textarea:focus{outline:none;border-color:var(--accent);background:#fffdf6;}
   .vcard select{width:100%;}
   .vdet summary{font-size:13px;}
   .vh{font-size:12.5px;}
+  .wxbar{font-size:12px;padding:11px 12px;}
+  .wxbar .wx-t{font-size:13px;}
+  .vdiag .vd-row{flex-direction:column;gap:0;}
+  .vdiag .vd-row>b{flex:none;}
 }
 /* ---------- 爸爸的寄语 ---------- */
 .dadcard{
@@ -3062,6 +3112,109 @@ var rate=0.85, zhVoice=null, seqTimer=null, speaking=false, speakToken=0, pauseK
 var Q1='\x22';
 
 /* ------------------------------------------------------------
+   朗读引擎分两条路：
+   ① 预生成音频（主路）：用微软神经语音离线合成好的 mp3，
+      通过 <audio> 播放。微信内置浏览器（安卓 X5 内核）会阉割
+      Web Speech API（getVoices 返回空数组、speak 静默不发声），
+      但 <audio> 播放不受影响，所以这条是微信里唯一能出声的路。
+   ② 系统语音（备路）：电脑 / 手机浏览器的 speechSynthesis，
+      在已装高音质语音包的设备上可用，作为音频缺失时的兜底。
+   ------------------------------------------------------------ */
+
+/* 音频索引：textId -> {r:[逐句 id], j:[讲读板块 id]} */
+var AUDIO_MAP={"p1yx":{"r":["p1yx_r0","p1yx_r1","p1yx_r2","p1yx_r3","p1yx_r4","p1yx_r5"],"j":["p1yx_j0","p1yx_j1","p1yx_j2","p1yx_j3","p1yx_j4"]},"p1cq":{"r":["p1cq_r0","p1cq_r1","p1cq_r2","p1cq_r3","p1cq_r4","p1cq_r5","p1cq_r6","p1cq_r7","p1cq_r8","p1cq_r9","p1cq_r10","p1cq_r11"],"j":["p1cq_j0","p1cq_j1","p1cq_j2","p1cq_j3","p1cq_j4"]},"p1ly":{"r":["p1ly_r0","p1ly_r1","p1ly_r2","p1ly_r3","p1ly_r4","p1ly_r5","p1ly_r6","p1ly_r7","p1ly_r8"],"j":["p1ly_j0","p1ly_j1","p1ly_j2","p1ly_j3","p1ly_j4"]},"p1jz":{"r":["p1jz_r0","p1jz_r1","p1jz_r2","p1jz_r3","p1jz_r4"],"j":["p1jz_j0","p1jz_j1","p1jz_j2","p1jz_j3","p1jz_j4"]},"p1lang":{"r":["p1lang_r0","p1lang_r1","p1lang_r2","p1lang_r3","p1lang_r4","p1lang_r5","p1lang_r6","p1lang_r7","p1lang_r8","p1lang_r9","p1lang_r10","p1lang_r11","p1lang_r12","p1lang_r13","p1lang_r14"],"j":["p1lang_j0","p1lang_j1","p1lang_j2","p1lang_j3","p1lang_j4"]},"p1cj":{"r":["p1cj_r0","p1cj_r1","p1cj_r2","p1cj_r3","p1cj_r4","p1cj_r5"],"j":["p1cj_j0","p1cj_j1","p1cj_j2","p1cj_j3","p1cj_j4"]},"p1qr":{"r":["p1qr_r0","p1qr_r1","p1qr_r2","p1qr_r3","p1qr_r4"],"j":["p1qr_j0","p1qr_j1","p1qr_j2","p1qr_j3","p1qr_j4"]},"p1sg":{"r":["p1sg_r0","p1sg_r1","p1sg_r2","p1sg_r3","p1sg_r4","p1sg_r5","p1sg_r6","p1sg_r7","p1sg_r8","p1sg_r9"],"j":["p1sg_j0","p1sg_j1","p1sg_j2","p1sg_j3","p1sg_j4"]},"p1my":{"r":["p1my_r0","p1my_r1","p1my_r2","p1my_r3","p1my_r4","p1my_r5","p1my_r6","p1my_r7","p1my_r8","p1my_r9","p1my_r10"],"j":["p1my_j0","p1my_j1","p1my_j2","p1my_j3","p1my_j4"]},"p1ls":{"r":["p1ls_r0","p1ls_r1","p1ls_r2","p1ls_r3","p1ls_r4","p1ls_r5","p1ls_r6","p1ls_r7","p1ls_r8"],"j":["p1ls_j0","p1ls_j1","p1ls_j2","p1ls_j3","p1ls_j4"]},"p1al":{"r":["p1al_r0","p1al_r1","p1al_r2","p1al_r3","p1al_r4","p1al_r5","p1al_r6","p1al_r7","p1al_r8","p1al_r9","p1al_r10"],"j":["p1al_j0","p1al_j1","p1al_j2","p1al_j3","p1al_j4"]},"p1hzs":{"r":["p1hzs_r0","p1hzs_r1","p1hzs_r2","p1hzs_r3","p1hzs_r4","p1hzs_r5","p1hzs_r6","p1hzs_r7","p1hzs_r8","p1hzs_r9","p1hzs_r10"],"j":["p1hzs_j0","p1hzs_j1","p1hzs_j2","p1hzs_j3","p1hzs_j4"]},"p2sq":{"r":["p2sq_r0","p2sq_r1","p2sq_r2","p2sq_r3","p2sq_r4","p2sq_r5","p2sq_r6","p2sq_r7"],"j":["p2sq_j0","p2sq_j1","p2sq_j2","p2sq_j3","p2sq_j4"]},"p2dx":{"r":["p2dx_r0","p2dx_r1","p2dx_r2","p2dx_r3","p2dx_r4","p2dx_r5","p2dx_r6","p2dx_r7"],"j":["p2dx_j0","p2dx_j1","p2dx_j2","p2dx_j3","p2dx_j4"]},"p2cs":{"r":["p2cs_r0","p2cs_r1","p2cs_r2","p2cs_r3","p2cs_r4","p2cs_r5","p2cs_r6"],"j":["p2cs_j0","p2cs_j1","p2cs_j2","p2cs_j3","p2cs_j4"]},"p2yz":{"r":["p2yz_r0","p2yz_r1","p2yz_r2","p2yz_r3","p2yz_r4","p2yz_r5","p2yz_r6","p2yz_r7","p2yz_r8","p2yz_r9","p2yz_r10","p2yz_r11"],"j":["p2yz_j0","p2yz_j1","p2yz_j2","p2yz_j3","p2yz_j4"]},"p2fg":{"r":["p2fg_r0","p2fg_r1","p2fg_r2","p2fg_r3","p2fg_r4","p2fg_r5","p2fg_r6","p2fg_r7"],"j":["p2fg_j0","p2fg_j1","p2fg_j2","p2fg_j3","p2fg_j4"]},"p2sy":{"r":["p2sy_r0","p2sy_r1","p2sy_r2","p2sy_r3","p2sy_r4","p2sy_r5","p2sy_r6"],"j":["p2sy_j0","p2sy_j1","p2sy_j2","p2sy_j3","p2sy_j4"]},"p2yg":{"r":["p2yg_r0","p2yg_r1","p2yg_r2","p2yg_r3","p2yg_r4","p2yg_r5","p2yg_r6","p2yg_r7","p2yg_r8","p2yg_r9","p2yg_r10","p2yg_r11"],"j":["p2yg_j0","p2yg_j1","p2yg_j2","p2yg_j3","p2yg_j4"]},"p2zy":{"r":["p2zy_r0","p2zy_r1","p2zy_r2","p2zy_r3","p2zy_r4","p2zy_r5","p2zy_r6","p2zy_r7","p2zy_r8","p2zy_r9","p2zy_r10","p2zy_r11","p2zy_r12"],"j":["p2zy_j0","p2zy_j1","p2zy_j2","p2zy_j3","p2zy_j4"]},"p3ty":{"r":["p3ty_r0","p3ty_r1","p3ty_r2","p3ty_r3","p3ty_r4","p3ty_r5","p3ty_r6","p3ty_r7","p3ty_r8","p3ty_r9","p3ty_r10","p3ty_r11"],"j":["p3ty_j0","p3ty_j1","p3ty_j2","p3ty_j3","p3ty_j4"]},"p3xs":{"r":["p3xs_r0","p3xs_r1","p3xs_r2","p3xs_r3","p3xs_r4","p3xs_r5","p3xs_r6","p3xs_r7"],"j":["p3xs_j0","p3xs_j1","p3xs_j2","p3xs_j3","p3xs_j4"]},"p3hz":{"r":["p3hz_r0","p3hz_r1","p3hz_r2","p3hz_r3","p3hz_r4","p3hz_r5","p3hz_r6"],"j":["p3hz_j0","p3hz_j1","p3hz_j2","p3hz_j3","p3hz_j4"]},"p3bm":{"r":["p3bm_r0","p3bm_r1","p3bm_r2","p3bm_r3","p3bm_r4","p3bm_r5","p3bm_r6","p3bm_r7"],"j":["p3bm_j0","p3bm_j1","p3bm_j2","p3bm_j3","p3bm_j4"]},"p3jy":{"r":["p3jy_r0","p3jy_r1","p3jy_r2","p3jy_r3","p3jy_r4","p3jy_r5","p3jy_r6"],"j":["p3jy_j0","p3jy_j1","p3jy_j2","p3jy_j3","p3jy_j4"]},"p3dd":{"r":["p3dd_r0","p3dd_r1","p3dd_r2","p3dd_r3","p3dd_r4"],"j":["p3dd_j0","p3dd_j1","p3dd_j2","p3dd_j3","p3dd_j4"]},"p3ms":{"r":["p3ms_r0","p3ms_r1","p3ms_r2","p3ms_r3","p3ms_r4","p3ms_r5","p3ms_r6","p3ms_r7","p3ms_r8","p3ms_r9"],"j":["p3ms_j0","p3ms_j1","p3ms_j2","p3ms_j3","p3ms_j4"]},"yylj":{"r":["yylj_r0","yylj_r1","yylj_r2","yylj_r3","yylj_r4","yylj_r5","yylj_r6","yylj_r7","yylj_r8","yylj_r9","yylj_r10","yylj_r11","yylj_r12","yylj_r13","yylj_r14","yylj_r15","yylj_r16","yylj_r17","yylj_r18","yylj_r19","yylj_r20","yylj_r21","yylj_r22","yylj_r23","yylj_r24"],"j":["yylj_j0","yylj_j1","yylj_j2","yylj_j3","yylj_j4"]},"zotj":{"r":["zotj_r0","zotj_r1","zotj_r2","zotj_r3","zotj_r4","zotj_r5","zotj_r6","zotj_r7","zotj_r8","zotj_r9","zotj_r10","zotj_r11","zotj_r12","zotj_r13","zotj_r14","zotj_r15","zotj_r16","zotj_r17","zotj_r18","zotj_r19","zotj_r20","zotj_r21","zotj_r22","zotj_r23","zotj_r24"],"j":["zotj_j0","zotj_j1","zotj_j2","zotj_j3","zotj_j4"]},"hxt":{"r":["hxt_r0","hxt_r1","hxt_r2","hxt_r3","hxt_r4","hxt_r5","hxt_r6","hxt_r7","hxt_r8","hxt_r9","hxt_r10"],"j":["hxt_j0","hxt_j1","hxt_j2","hxt_j3","hxt_j4"]},"ywsu":{"r":["ywsu_r0","ywsu_r1","ywsu_r2","ywsu_r3","ywsu_r4","ywsu_r5","ywsu_r6","ywsu_r7","ywsu_r8","ywsu_r9","ywsu_r10","ywsu_r11","ywsu_r12","ywsu_r13","ywsu_r14","ywsu_r15","ywsu_r16"],"j":["ywsu_j0","ywsu_j1","ywsu_j2","ywsu_j3","ywsu_j4"]},"p4tj":{"r":["p4tj_r0","p4tj_r1","p4tj_r2","p4tj_r3","p4tj_r4","p4tj_r5","p4tj_r6","p4tj_r7","p4tj_r8","p4tj_r9","p4tj_r10","p4tj_r11","p4tj_r12","p4tj_r13","p4tj_r14","p4tj_r15"],"j":["p4tj_j0","p4tj_j1","p4tj_j2","p4tj_j3","p4tj_j4"]},"p5dy":{"r":["p5dy_r0","p5dy_r1","p5dy_r2","p5dy_r3","p5dy_r4","p5dy_r5","p5dy_r6","p5dy_r7","p5dy_r8","p5dy_r9"],"j":["p5dy_j0","p5dy_j1","p5dy_j2","p5dy_j3","p5dy_j4"]},"cglz":{"r":["cglz_r0","cglz_r1","cglz_r2","cglz_r3","cglz_r4","cglz_r5","cglz_r6","cglz_r7","cglz_r8","cglz_r9","cglz_r10","cglz_r11","cglz_r12","cglz_r13","cglz_r14","cglz_r15","cglz_r16","cglz_r17","cglz_r18","cglz_r19","cglz_r20","cglz_r21","cglz_r22","cglz_r23","cglz_r24","cglz_r25","cglz_r26","cglz_r27","cglz_r28","cglz_r29"],"j":["cglz_j0","cglz_j1","cglz_j2","cglz_j3","cglz_j4"]},"p5zj":{"r":["p5zj_r0","p5zj_r1","p5zj_r2","p5zj_r3","p5zj_r4","p5zj_r5","p5zj_r6","p5zj_r7","p5zj_r8","p5zj_r9","p5zj_r10","p5zj_r11","p5zj_r12"],"j":["p5zj_j0","p5zj_j1","p5zj_j2","p5zj_j3","p5zj_j4"]},"p5cs":{"r":["p5cs_r0","p5cs_r1","p5cs_r2","p5cs_r3","p5cs_r4","p5cs_r5","p5cs_r6"],"j":["p5cs_j0","p5cs_j1","p5cs_j2","p5cs_j3","p5cs_j4"]},"g1gc":{"r":["g1gc_r0","g1gc_r1","g1gc_r2","g1gc_r3","g1gc_r4","g1gc_r5","g1gc_r6"],"j":["g1gc_j0","g1gc_j1","g1gc_j2","g1gc_j3","g1gc_j4"]},"g1wc":{"r":["g1wc_r0","g1wc_r1"],"j":["g1wc_j0","g1wc_j1","g1wc_j2","g1wc_j3","g1wc_j4"]},"g1cb":{"r":["g1cb_r0","g1cb_r1","g1cb_r2","g1cb_r3","g1cb_r4"],"j":["g1cb_j0","g1cb_j1","g1cb_j2","g1cb_j3","g1cb_j4"]},"g1tj":{"r":["g1tj_r0","g1tj_r1"],"j":["g1tj_j0","g1tj_j1","g1tj_j2","g1tj_j3","g1tj_j4"]},"g1yy":{"r":["g1yy_r0","g1yy_r1"],"j":["g1yy_j0","g1yy_j1","g1yy_j2","g1yy_j3","g1yy_j4"]},"g1ml":{"r":["g1ml_r0","g1ml_r1","g1ml_r2","g1ml_r3","g1ml_r4","g1ml_r5","g1ml_r6","g1ml_r7","g1ml_r8","g1ml_r9","g1ml_r10","g1ml_r11","g1ml_r12","g1ml_r13","g1ml_r14","g1ml_r15","g1ml_r16","g1ml_r17","g1ml_r18","g1ml_r19","g1ml_r20","g1ml_r21","g1ml_r22"],"j":["g1ml_j0","g1ml_j1","g1ml_j2","g1ml_j3","g1ml_j4"]},"g1dy":{"r":["g1dy_r0","g1dy_r1"],"j":["g1dy_j0","g1dy_j1","g1dy_j2","g1dy_j3","g1dy_j4"]},"g1wy":{"r":["g1wy_r0","g1wy_r1","g1wy_r2","g1wy_r3","g1wy_r4"],"j":["g1wy_j0","g1wy_j1","g1wy_j2","g1wy_j3","g1wy_j4"]},"g1df":{"r":["g1df_r0","g1df_r1"],"j":["g1df_j0","g1df_j1","g1df_j2","g1df_j3","g1df_j4"]},"g1ys":{"r":["g1ys_r0","g1ys_r1","g1ys_r2","g1ys_r3"],"j":["g1ys_j0","g1ys_j1","g1ys_j2","g1ys_j3","g1ys_j4"]},"g1jw":{"r":["g1jw_r0","g1jw_r1"],"j":["g1jw_j0","g1jw_j1","g1jw_j2","g1jw_j3","g1jw_j4"]},"g1bq":{"r":["g1bq_r0","g1bq_r1"],"j":["g1bq_j0","g1bq_j1","g1bq_j2","g1bq_j3","g1bq_j4"]},"g2hw":{"r":["g2hw_r0","g2hw_r1","g2hw_r2","g2hw_r3","g2hw_r4"],"j":["g2hw_j0","g2hw_j1","g2hw_j2","g2hw_j3","g2hw_j4"]},"g2sz":{"r":["g2sz_r0","g2sz_r1","g2sz_r2","g2sz_r3"],"j":["g2sz_j0","g2sz_j1","g2sz_j2","g2sz_j3","g2sz_j4"]},"g2qt":{"r":["g2qt_r0","g2qt_r1","g2qt_r2","g2qt_r3"],"j":["g2qt_j0","g2qt_j1","g2qt_j2","g2qt_j3","g2qt_j4"]},"g2yq":{"r":["g2yq_r0","g2yq_r1","g2yq_r2","g2yq_r3","g2yq_r4","g2yq_r5"],"j":["g2yq_j0","g2yq_j1","g2yq_j2","g2yq_j3","g2yq_j4"]},"g2cw":{"r":["g2cw_r0","g2cw_r1","g2cw_r2","g2cw_r3"],"j":["g2cw_j0","g2cw_j1","g2cw_j2","g2cw_j3","g2cw_j4"]},"g2ym":{"r":["g2ym_r0","g2ym_r1","g2ym_r2","g2ym_r3"],"j":["g2ym_j0","g2ym_j1","g2ym_j2","g2ym_j3","g2ym_j4"]},"g2cp":{"r":["g2cp_r0","g2cp_r1"],"j":["g2cp_j0","g2cp_j1","g2cp_j2","g2cp_j3","g2cp_j4"]},"g2yj":{"r":["g2yj_r0","g2yj_r1","g2yj_r2","g2yj_r3","g2yj_r4","g2yj_r5"],"j":["g2yj_j0","g2yj_j1","g2yj_j2","g2yj_j3","g2yj_j4"]},"g2hx":{"r":["g2hx_r0","g2hx_r1","g2hx_r2","g2hx_r3"],"j":["g2hx_j0","g2hx_j1","g2hx_j2","g2hx_j3","g2hx_j4"]},"g3gj":{"r":["g3gj_r0","g3gj_r1","g3gj_r2","g3gj_r3","g3gj_r4","g3gj_r5","g3gj_r6","g3gj_r7","g3gj_r8","g3gj_r9"],"j":["g3gj_j0","g3gj_j1","g3gj_j2","g3gj_j3","g3gj_j4"]},"g3jj":{"r":["g3jj_r0","g3jj_r1","g3jj_r2","g3jj_r3","g3jj_r4","g3jj_r5","g3jj_r6","g3jj_r7","g3jj_r8","g3jj_r9","g3jj_r10","g3jj_r11"],"j":["g3jj_j0","g3jj_j1","g3jj_j2","g3jj_j3","g3jj_j4"]},"g3sd":{"r":["g3sd_r0","g3sd_r1","g3sd_r2","g3sd_r3"],"j":["g3sd_j0","g3sd_j1","g3sd_j2","g3sd_j3","g3sd_j4"]},"g3mw":{"r":["g3mw_r0","g3mw_r1","g3mw_r2","g3mw_r3","g3mw_r4","g3mw_r5","g3mw_r6","g3mw_r7","g3mw_r8","g3mw_r9","g3mw_r10","g3mw_r11"],"j":["g3mw_j0","g3mw_j1","g3mw_j2","g3mw_j3","g3mw_j4"]},"g3mt":{"r":["g3mt_r0","g3mt_r1","g3mt_r2","g3mt_r3","g3mt_r4","g3mt_r5","g3mt_r6","g3mt_r7","g3mt_r8","g3mt_r9","g3mt_r10","g3mt_r11"],"j":["g3mt_j0","g3mt_j1","g3mt_j2","g3mt_j3","g3mt_j4"]},"g4xls":{"r":["g4xls_r0","g4xls_r1","g4xls_r2","g4xls_r3","g4xls_r4","g4xls_r5"],"j":["g4xls_j0","g4xls_j1","g4xls_j2","g4xls_j3","g4xls_j4"]},"g4cl":{"r":["g4cl_r0","g4cl_r1","g4cl_r2","g4cl_r3"],"j":["g4cl_j0","g4cl_j1","g4cl_j2","g4cl_j3","g4cl_j4"]},"g4sd":{"r":["g4sd_r0","g4sd_r1","g4sd_r2","g4sd_r3","g4sd_r4","g4sd_r5","g4sd_r6","g4sd_r7","g4sd_r8","g4sd_r9"],"j":["g4sd_j0","g4sd_j1","g4sd_j2","g4sd_j3","g4sd_j4"]},"g4wt":{"r":["g4wt_r0","g4wt_r1","g4wt_r2","g4wt_r3"],"j":["g4wt_j0","g4wt_j1","g4wt_j2","g4wt_j3","g4wt_j4"]},"g5yj":{"r":["g5yj_r0","g5yj_r1","g5yj_r2","g5yj_r3"],"j":["g5yj_j0","g5yj_j1","g5yj_j2","g5yj_j3","g5yj_j4"]},"g5jc":{"r":["g5jc_r0","g5jc_r1","g5jc_r2","g5jc_r3","g5jc_r4","g5jc_r5"],"j":["g5jc_j0","g5jc_j1","g5jc_j2","g5jc_j3","g5jc_j4"]},"g5pz":{"r":["g5pz_r0","g5pz_r1","g5pz_r2","g5pz_r3","g5pz_r4"],"j":["g5pz_j0","g5pz_j1","g5pz_j2","g5pz_j3","g5pz_j4"]},"g5mh":{"r":["g5mh_r0","g5mh_r1","g5mh_r2","g5mh_r3","g5mh_r4","g5mh_r5","g5mh_r6","g5mh_r7","g5mh_r8","g5mh_r9","g5mh_r10"],"j":["g5mh_j0","g5mh_j1","g5mh_j2","g5mh_j3","g5mh_j4"]},"g5sw":{"r":["g5sw_r0","g5sw_r1","g5sw_r2","g5sw_r3","g5sw_r4","g5sw_r5","g5sw_r6","g5sw_r7"],"j":["g5sw_j0","g5sw_j1","g5sw_j2","g5sw_j3","g5sw_j4"]},"g5bx":{"r":["g5bx_r0","g5bx_r1","g5bx_r2","g5bx_r3","g5bx_r4","g5bx_r5","g5bx_r6","g5bx_r7","g5bx_r8"],"j":["g5bx_j0","g5bx_j1","g5bx_j2","g5bx_j3","g5bx_j4"]},"g5nx":{"r":["g5nx_r0","g5nx_r1","g5nx_r2","g5nx_r3","g5nx_r4","g5nx_r5","g5nx_r6","g5nx_r7","g5nx_r8"],"j":["g5nx_j0","g5nx_j1","g5nx_j2","g5nx_j3","g5nx_j4"]},"g5gld":{"r":["g5gld_r0","g5gld_r1","g5gld_r2","g5gld_r3","g5gld_r4"],"j":["g5gld_j0","g5gld_j1","g5gld_j2","g5gld_j3","g5gld_j4"]},"g5spy":{"r":["g5spy_r0","g5spy_r1","g5spy_r2","g5spy_r3","g5spy_r4"],"j":["g5spy_j0","g5spy_j1","g5spy_j2","g5spy_j3","g5spy_j4"]}};
+/* 当前选用的预生成音色 */
+var AUDIO_VOICE='xiaoxiao';
+/* 预生成音色清单 */
+var AUDIO_VOICES=[
+  {id:'xiaoxiao',name:'晓晓 · 女声·新闻播报',tag:'温暖清晰，最接近播音腔',file:'xiaoxiao'},
+  {id:'yunyang', name:'云扬 · 男声·新闻播报',tag:'浑厚稳重，正式播报腔',file:'yunyang'}
+];
+/* 音频文件根目录：同目录下 audio/<音色>/<id>.mp3 */
+var AUDIO_BASE='audio/';
+/* 线上页面地址（拆开写是为了避免 // 被静态检查误判为注释起始） */
+var SITE_URL='https:'+'//andy-wei0821.github.io/yuxuan-chinese/';
+/* 运行时状态 */
+var audioEl=null, audioToken=0, audioReady=false, audioProbe=null, mp3Broken=false;
+
+/* ------------------------------------------------------------
+   环境探测：识别微信内置浏览器与具体浏览器
+   微信（安卓 X5 内核）不支持 Web Speech API，朗读无法发声；
+   不同浏览器内置的语音质量差异极大，需据此给引导
+   ------------------------------------------------------------ */
+function isWeChat(){
+  try{ return /micromessenger/i.test(navigator.userAgent||''); }catch(e){ return false; }
+}
+function browserName(){
+  var ua=(navigator.userAgent||'');
+  /* 用 indexOf 而非正则：转义斜杠的正则会含双斜杠序列，
+     某些静态检查器会把它当注释起始，误判脚本括号不配平 */
+  if(ua.indexOf('MicroMessenger')>=0) return '微信内置浏览器';
+  if(ua.indexOf('Edg/')>=0||ua.indexOf('Edge/')>=0) return 'Edge';
+  if(ua.indexOf('Firefox/')>=0) return 'Firefox';
+  if(ua.indexOf('Chrome/')>=0) return 'Chrome';
+  if(ua.indexOf('Safari/')>=0) return 'Safari';
+  return '当前浏览器';
+}
+function isMobile(){
+  try{ return /Android|iPhone|iPod|iPad|HarmonyOS|Windows Phone|Mobile/i.test(navigator.userAgent||''); }catch(e){ return false; }
+}
+/* 本地直接打开 html（file:// 协议）时，浏览器不允许读同目录的 mp3，
+   朗读只能退回系统语音。此时给出明确提示，让用户用网址打开。 */
+function isLocalFile(){
+  try{ return location.protocol==='file:'; }catch(e){ return false; }
+}
+
+/* ------------------------------------------------------------
+   音频资源探测：确认 mp3 是否真的能取到。
+   不能只看 file:// 或 http 状态——离线打开本地文件时 fetch 也会失败，
+   因此以「Audio 对象能否触发 canplay」为准。
+   ------------------------------------------------------------ */
+function probeAudio(){
+  if(audioProbe) return audioProbe;
+  audioProbe=new Promise(function(res){
+    var t=setTimeout(function(){ res(false); },3500);
+    try{
+      var a=new Audio();
+      a.preload='auto';
+      a.oncanplaythrough=function(){ clearTimeout(t); res(true); };
+      a.onerror=function(){ clearTimeout(t); res(false); };
+      a.src=AUDIO_BASE+AUDIO_VOICE+'/'+(firstAudioId()||'__none__')+'.mp3';
+    }catch(e){ clearTimeout(t); res(false); }
+  });
+  return audioProbe;
+}
+function firstAudioId(){
+  for(var k in AUDIO_MAP){
+    if(AUDIO_MAP[k].r&&AUDIO_MAP[k].r.length) return AUDIO_MAP[k].r[0];
+  }
+  return '';
+}
+/* 取某句 / 某板块对应的音频 id */
+function audioIdFor(textId,kind,idx){
+  var m=AUDIO_MAP[textId];
+  if(!m) return '';
+  var arr=(kind==='j')?m.j:m.r;
+  if(!arr||idx<0||idx>=arr.length) return '';
+  return arr[idx];
+}
+function audioUrl(id){
+  if(!id) return '';
+  return AUDIO_BASE+AUDIO_VOICE+'/'+id+'.mp3';
+}
+function getAudioEl(){
+  if(!audioEl){
+    audioEl=document.createElement('audio');
+    audioEl.preload='none';
+    audioEl.setAttribute('playsinline','');
+    audioEl.setAttribute('webkit-playsinline','');
+    audioEl.style.display='none';
+    document.body.appendChild(audioEl);
+  }
+  return audioEl;
+}
+
+/* ------------------------------------------------------------
    教材明确注释的通假异读。朗读时临时替换为同音字，只改读音不改显示。
    例：不亦说乎 → 不亦悦乎（说通悦，读 yuè）
    ------------------------------------------------------------ */
@@ -3150,6 +3303,16 @@ function storeTts(k,v){
   store.tts[k]=v; save();
 }
 function pickVoice(){
+  /* 先恢复用户保存的朗读设置（与是否支持系统语音无关） */
+  if(store.tts){
+    if(store.tts.rate){var r=parseFloat(store.tts.rate); if(r>=0.5&&r<=1.4) rate=r;}
+    if(store.tts.pause){var p=parseFloat(store.tts.pause); if(p>=0&&p<=3) pauseK=p;}
+    if(store.tts.av){
+      for(var q=0;q<AUDIO_VOICES.length;q++){
+        if(AUDIO_VOICES[q].id===store.tts.av) AUDIO_VOICE=store.tts.av;
+      }
+    }
+  }
   if(!('speechSynthesis' in window)) return;
   var vs=listZhVoices();
   if(!vs.length){zhVoice=null;return;}
@@ -3158,25 +3321,80 @@ function pickVoice(){
   for(var i=0;i<vs.length;i++){
     if(vs[i].voiceURI===want){zhVoice=vs[i];break;}
   }
-  if(store.tts){
-    if(store.tts.rate){var r=parseFloat(store.tts.rate); if(r>=0.5&&r<=1.4) rate=r;}
-    if(store.tts.pause){var p=parseFloat(store.tts.pause); if(p>=0&&p<=3) pauseK=p;}
-  }
 }
+try{ pickVoice(); }catch(e){}
 if('speechSynthesis' in window){
-  try{ pickVoice(); }catch(e){}
   try{ speechSynthesis.onvoiceschanged=function(){pickVoice();}; }catch(e){}
 }
+/* 载入后探测预生成音频是否可用（决定走主路还是系统语音） */
+try{
+  probeAudio().then(function(ok){
+    audioReady=ok;
+    refreshTtsDiag();
+  });
+}catch(e){}
 function stopSpeak(){
   speakToken++;
+  audioToken++;
   speaking=false;
   if(seqTimer){clearTimeout(seqTimer);seqTimer=null;}
+  if(audioEl){ try{ audioEl.pause(); audioEl.removeAttribute('src'); }catch(e){} }
   if('speechSynthesis' in window){
     try{speechSynthesis.cancel();}catch(e){}
   }
   var els=document.querySelectorAll('.s.speaking');
   for(var i=0;i<els.length;i++) els[i].classList.remove('speaking');
 }
+
+/* ------------------------------------------------------------
+   ① 预生成音频播放：逐句取 mp3 依次播，句间按标点留停顿。
+      微信里这是唯一能出声的路。
+   ------------------------------------------------------------ */
+function playMp3(id,cb,tk){
+  if(tk!==speakToken) return;
+  if(!id){ cb(true); return; }
+  var a=getAudioEl();
+  var atk=audioToken;
+  var done=false;
+  function finish(fallback){
+    if(done) return; done=true;
+    a.onended=null; a.onerror=null;
+    if(tk===speakToken) cb(fallback);
+  }
+  a.onended=function(){ finish(false); };
+  a.onerror=function(){
+    if(atk!==audioToken) return;
+    /* 音频取不到 → 标记主路不可用，后续直接走系统语音 */
+    mp3Broken=true;
+    audioReady=false;
+    finish(true);
+  };
+  try{
+    a.playbackRate=rate;
+    a.src=audioUrl(id);
+    a.currentTime=0;
+    var p=a.play();
+    if(p&&p.catch) p.catch(function(){
+      /* 播放被拒通常是缺少用户手势，忽略 */
+    });
+  }catch(e){
+    finish(true);
+  }
+}
+/* 句末停顿：按该句结尾标点定（逗号 240ms / 分号冒号 330ms / 句末 470ms） */
+function endPause(text){
+  var t=String(text||'').replace(/[\s\u3000]+/g,'');
+  if(!t) return 0;
+  var c=t.charAt(t.length-1);
+  if(/[。！？]/.test(c)) return 470;
+  if(/[；：]/.test(c)) return 330;
+  if(/[，、]/.test(c)) return 240;
+  return 0;
+}
+
+/* ------------------------------------------------------------
+   ② 系统语音播放（兜底）
+   ------------------------------------------------------------ */
 function speakSeq(items,cb,tk){
   if(tk!==speakToken||!speaking) return;
   if(!items.length){ if(cb) cb(); return; }
@@ -3194,21 +3412,59 @@ function speakSeq(items,cb,tk){
   u.onerror=function(){ if(tk===speakToken) speakSeq(items,cb,tk); };
   try{ speechSynthesis.speak(u); }catch(e){ speakSeq(items,cb,tk); }
 }
-function speakList(els,idx){
+
+/* ------------------------------------------------------------
+   统一入口：把「一组可点句」按顺序念完。
+   先走预生成音频；音频不可用时自动改用系统语音。
+   ids[idx] 对应 els[idx] 的音频 id。
+   ------------------------------------------------------------ */
+function speakList(els,idx,ids){
   if(!speaking) return;
   if(idx>=els.length){speaking=false;return;}
   var tk=speakToken;
   var el=els[idx];
   el.classList.add('speaking');
   try{el.scrollIntoView({block:'center',behavior:'smooth'});}catch(e){}
-  var items=ttsChunks(fixPron(el.textContent));
-  speakSeq(items,function(){
+  var id=(ids&&ids[idx])||'';
+  var goNext=function(){
     if(tk!==speakToken||!speaking) return;
     el.classList.remove('speaking');
-    speakList(els,idx+1);
-  },tk);
+    var p=endPause(el.textContent);
+    if(p>0) seqTimer=setTimeout(function(){ speakList(els,idx+1,ids); },Math.round(p*pauseK));
+    else speakList(els,idx+1,ids);
+  };
+  if(id&&!mp3Broken){
+    /* 只要有音频 id 就先试主路；主路出错再退回系统语音。
+       不依赖探测结果，避免弱网下误判成「没有音频」 */
+    playMp3(id,function(fallback){
+      if(fallback){
+        /* 这一句退回系统语音念 */
+        var items=ttsChunks(fixPron(el.textContent));
+        speakSeq(items,function(){ goNext(); },tk);
+      }else{
+        goNext();
+      }
+    },tk);
+    return;
+  }
+  var items2=ttsChunks(fixPron(el.textContent));
+  speakSeq(items2,function(){ goNext(); },tk);
 }
-function speakOne(el){ stopSpeak(); speaking=true; speakList([el],0); }
+function speakOne(el,id){
+  stopSpeak();
+  speaking=true;
+  if(id&&!mp3Broken){
+    playMp3(id,function(fallback){
+      if(fallback){
+        var items=ttsChunks(fixPron(el.textContent));
+        speakSeq(items,function(){ speaking=false; },speakToken);
+      }else speaking=false;
+    },speakToken);
+  }else{
+    var items=ttsChunks(fixPron(el.textContent));
+    speakSeq(items,function(){ speaking=false; },speakToken);
+  }
+}
 function sampleVoice(uri){
   stopSpeak();
   var vs=listZhVoices(), v=null;
@@ -3218,20 +3474,60 @@ function sampleVoice(uri){
   if(v) u.voice=v; else if(zhVoice) u.voice=zhVoice;
   try{ speechSynthesis.speak(u); }catch(e){}
 }
-/* 朗读设置面板：系统只能调用手机 / 电脑里已装的音色，
-   本面板负责把最好的那个挑出来，并给出升级到“自然语音”的安装路径 */
+/* 试听预生成音色：取第一句真实音频 */
+function sampleAudio(){
+  stopSpeak();
+  speaking=true;
+  var id=firstAudioId();
+  if(!id){ speaking=false; sampleVoice(''); return; }
+  var a=getAudioEl();
+  var atk=audioToken;
+  a.onended=function(){ speaking=false; };
+  a.onerror=function(){
+    if(atk!==audioToken) return;
+    mp3Broken=true; audioReady=false;
+    speaking=false;
+    sampleVoice('');
+  };
+  try{
+    a.playbackRate=rate;
+    a.src=audioUrl(id);
+    a.currentTime=0;
+    var p=a.play();
+    if(p&&p.catch) p.catch(function(){ speaking=false; });
+  }catch(e){ speaking=false; }
+}
+/* 朗读设置面板：主路是预生成的神经语音（已存成 mp3，随页面一起走），
+   备路是系统语音；本面板负责选音色、看体检结果、给手机换语音包的指引 */
 function ttsCfgHtml(){
   var vs=listZhVoices();
-  var opts='';
-  for(var i=0;i<vs.length;i++){
-    var sel=(zhVoice&&vs[i].voiceURI===zhVoice.voiceURI)?' selected':'';
-    opts+='<option value='+Q1+escapeHtml(vs[i].voiceURI)+Q1+sel+'>'+escapeHtml(vs[i].name)+'　'+escapeHtml(voiceTag(vs[i]))+'</option>';
+  var curVoice=AUDIO_VOICES[0];
+  for(var q=0;q<AUDIO_VOICES.length;q++){
+    if(AUDIO_VOICES[q].id===AUDIO_VOICE) curVoice=AUDIO_VOICES[q];
   }
-  if(!opts) opts='<option value='+Q1+Q1+'>未检测到中文语音 —— 看下方安装指引</option>';
-  var cur=zhVoice
-    ? escapeHtml(zhVoice.name)+'　<a class=vt>'+escapeHtml(voiceTag(zhVoice))+'</a>'
-    : '尚未检测到中文语音';
-  var pr=Math.round(pauseK*100)/100;
+  /* 预生成音色单选 */
+  var vos='';
+  for(var i=0;i<AUDIO_VOICES.length;i++){
+    var v=AUDIO_VOICES[i];
+    var on=(v.id===AUDIO_VOICE)?' checked':'';
+    vos+='<label class="vopt"><input type="radio" name="vopt" value="'+v.id+'"'+on+'> '
+      +'<b>'+escapeHtml(v.name)+'</b><span>'+escapeHtml(v.tag)+'</span></label>';
+  }
+  /* 系统语音下拉（备路） */
+  var opts='';
+  for(var j=0;j<vs.length;j++){
+    var sel=(zhVoice&&vs[j].voiceURI===zhVoice.voiceURI)?' selected':'';
+    opts+='<option value='+Q1+escapeHtml(vs[j].voiceURI)+Q1+sel+'>'+escapeHtml(vs[j].name)+'　'+escapeHtml(voiceTag(vs[j]))+'</option>';
+  }
+  if(!opts) opts='<option value='+Q1+Q1+'>未检测到系统中文语音</option>';
+  /* 体检结果 */
+  var d=diagTts();
+  var dclass=d.ok?'vd-good':(d.warn?'vd-warn':'vd-bad');
+  var dh='<div class="vdiag">'
+   +'<div class="vd-row"><b>运行环境</b><span>'+escapeHtml(d.env)+'</span></div>'
+   +'<div class="vd-row"><b>主路音频</b><span class="'+dclass+'">'+escapeHtml(d.audioState)+'</span></div>'
+   +'<div class="vd-row"><b>备路系统音</b><span>'+escapeHtml(d.sysState)+'</span></div>'
+   +'</div>';
   var ps='';
   var pv=[0.5,0.8,1,1.4,2];
   var pn=['0.5 紧凑','0.8 略快','1 标准','1.4 从容','2 慢读·适合长句'];
@@ -3239,60 +3535,155 @@ function ttsCfgHtml(){
     ps+='<option value='+Q1+pv[k]+Q1+((Math.abs(pauseK-pv[k])<0.01)?' selected':'')+'>'+pn[k]+'</option>';
   }
   var h='<div class=vcard id=vcfg hidden>'
-   +'<div class=vrow><b>当前音色</b><span>'+cur+'</span></div>'
-   +'<label class=vrow><b>选择音色</b><select class=vsel>'+opts+'</select></label>'
+   +'<div class=vrow><b>主路音色</b><span>'+escapeHtml(curVoice.name)+'　<a class=vt>预生成·播音级</a></span></div>'
+   +'<div class="vopts">'+vos+'</div>'
    +'<div class=vrow><button type=button class=btn id=vtry>试听一句</button> '
-   +'<button type=button class=btn id=vreload>刷新音色列表</button></div>'
+   +'<button type=button class=btn id=vreload>重新体检</button></div>'
    +'<label class=vrow><b>句读停顿</b><select class=vpause>'+ps+'</select></label>'
+   +'<label class=vrow><b>备路音色</b><select class=vsel>'+opts+'</select></label>'
+   +dh
    +'<div class=vnote>朗读已按教材注释自动纠正通假异读，例如「不亦<b>说</b>乎」按「悦」读、「便<b>要</b>还家」按「邀」读、「人海：<b>骑</b>」按「技」读。页面显示的原文不受影响。</div>'
-   +'<details class=vdet><summary>怎么装出「播音级」音色（按你的设备看）</summary>'
+   +'<details class=vdet><summary>为什么以前微信打开没声音？（已修好）</summary>'
    +'<div class=vbody>'
-   +'<p class=vh>要点：网页朗读只能用手机 / 电脑里<b>已经装好</b>的语音包，我无法凭空造出好音色。系统默认的「机器音」是可以替换掉的，方法见下，装完回本页点「刷新音色列表」。</p>'
-   +'<p class=vh><b>iPhone / iPad（Safari）</b><br>设置 → 辅助功能 → 朗读内容 → 声音 → 中文（简体）→ 选带「增强 / 高音质」标记的音色（如婷婷、Siri 系列），连 WiFi 下载约几百 MB。下载后回到本页刷新，音色列表里会出现新选项。</p>'
-   +'<p class=vh><b>安卓（Chrome / 华为浏览器）</b><br>设置 → 系统 → 语言和输入法 → 文字转语音输出 → 中文（普通话）→ 下载「高音质」或「自然」语音。华为、小米、OPPO、vivo 自带引擎通常有多个自然音色，选女声效果最好。</p>'
-   +'<p class=vh><b>电脑 Edge（音质天花板，免费）</b><br>Edge 有一批 Azure 神经网络在线语音，属于目前免费方案里最接近播音的一档：晓晓（女声，播报最稳）、云扬（男声，专业新闻播报）、云希（男声，亲和）。安装：Windows 设置 → 时间和语言 → 语言和区域 → 中文（简体）→ 语言选项 → 语音 → 下载 Microsoft Xiaoxiao Online (Natural)；再回本页音色列表里选名字带 Online / Natural 的那一项。<b>需联网</b>，朗读文字会发往服务器合成。</p>'
-   +'<p class=vh>如果想看图文步骤，直接搜这几个关键词即可：'
-   +'<br>· 「Edge 安装 Xiaoxiao Online Natural 语音」—— 讲怎么装 Edge 在线神经语音'
-   +'<br>· 「iPhone 朗读内容 声音 增强 高音质」—— 讲怎么下载 iPhone 的高音质朗读语音'
-   +'<br>· 「Android 文字转语音 高音质 语音包 下载」—— 讲安卓怎么换语音包'
-   +'<br>各品牌菜单名略有差异，以设备实际显示为准。</p>'
+   +'<p class=vh>原因是微信内置浏览器（安卓 X5 内核）把网页语音接口做了「阉割」：'
+   +'<code>speechSynthesis</code> 对象还在，但取不到任何中文语音，调用发声也<b>静默无反应</b>——'
+   +'不报错、不出声，开发时根本测不出来，这是最坑的一种「假兼容」。'
+   +'iPhone 微信虽然接口在，但常常没有可用语音包，同样不出声。</p>'
+   +'<p class=vh>本页面现在的做法：<b>把全部古文和讲解提前用微软神经语音合成成 mp3 音频文件</b>，'
+   +'随页面一起发布，朗读时用 <code>&lt;audio&gt;</code> 播放。'
+   +'<code>&lt;audio&gt;</code> 播放不受微信内核限制，所以<b>微信、QQ、钉钉、任何 App 内置浏览器都能出声</b>，'
+   +'而且音质是新闻播报级的神经语音，不是机器音。手机上按句懒加载，播到哪句才下哪句，不费流量。</p>'
+   +'<p class=vh>要不要换系统浏览器打开？<b>不用</b>，现在微信里直接点句子就能听。'
+   +'若你仍想用系统浏览器：右上角「···」→「在浏览器打开」（iPhone）；安卓微信点右上角「···」→「在浏览器中打开」。</p>'
+   +'</div></details>'
+   +'<details class=vdet><summary>手机换「高音质」语音包（小米 / 荣耀 专用指引）</summary>'
+   +'<div class=vbody>'
+   +'<p class=vh>主路音频已经够好，这一步是<b>锦上添花</b>——把手机系统的语音引擎也调好，'
+   +'以后你在微信里读别的文章、听书，也会顺带变好听。</p>'
+   +'<p class=vh><b>小米手机（MIUI / HyperOS）</b><br>'
+   +'① 设置 → 更多设置 → 语言和输入法 → <b>文字转语音输出</b>；<br>'
+   +'② 点「首选引擎」→ 选「小米语音引擎」；<br>'
+   +'③ 点小米语音引擎进去 → 选「中文（普通话）」→ 勾选<b>「高质量」或「自然音色」</b>那一档 → 下载；<br>'
+   +'④ 回到本页点「重新体检」，备路音色列表里就会出现新音色。</p>'
+   +'<p class=vh><b>荣耀手机（MagicOS）</b><br>'
+   +'① 设置 → 更多设置 → 语言和输入法 → <b>文字转语音输出</b>（部分版本在「系统和更新」下面）；<br>'
+   +'② 点「默认引擎」→ 选「荣耀语音引擎 / 华为语音引擎」或「Google 文字转语音」；<br>'
+   +'③ 进引擎设置 → 下载<b>中文语音包</b>，并把「语速」调到 0.9 附近最接近自然朗读；<br>'
+   +'④ 回到本页点「重新体检」。</p>'
+   +'<p class=vh>菜单名各家略有差异，认准关键词就够：<b>「文字转语音」/「TTS」/「语音输出」</b>。'
+   +'也可以直接搜「小米 文字转语音 首选引擎 高质量 语音包」或「荣耀 MagicOS 文字转语音输出 默认引擎」，'
+   +'有图文步骤更容易照着做。</p>'
+   +'</div></details>'
+   +'<details class=vdet><summary>电脑端（Edge / Chrome）想要更高音质？</summary>'
+   +'<div class=vbody>'
+   +'<p class=vh>Edge 自带一批 Azure 神经网络在线语音，是免费方案里最接近播音的一档：'
+   +'晓晓（女声，播报最稳）、云扬（男声，专业新闻播报）、云希（男声，亲和）。'
+   +'安装：Windows 设置 → 时间和语言 → 语言和区域 → 中文（简体）→ 语言选项 → 语音 → '
+   +'下载 <b>Microsoft Xiaoxiao Online (Natural)</b>；再回本页点「重新体检」，备路列表里就会多出带 '
+   +'Online / Natural 标记的音色。<b>需联网</b>，朗读文字会发往服务器合成。</p>'
+   +'<p class=vh>要图文步骤可直接搜「Edge 安装 Xiaoxiao Online Natural 语音」，各版本菜单名以实际显示为准。</p>'
    +'</div></details>'
    +'<details class=vdet><summary>想要真正的朗诵名家音色？</summary>'
    +'<div class=vbody>'
-   +'<p class=vh>浏览器这条路的上限就是系统语音：免费的自然语音已经很像播音，但不会有「某位名家」的音色。真正的配音级音色要走云端 TTS 付费接口（微软 Azure、讯飞、阿里云、腾讯云），按字数计费，价格很低但需要申请密钥。</p>'
-   +'<p class=vh>如果你愿意，我可以给你加一个「云端音色」版：页面里填自己的密钥，调用云端接口生成音频再播放——音质能到配音级，也支持情感 / 停顿的细调。需要你先准备好对应平台的 API Key，我不内置任何第三方密钥。</p>'
+   +'<p class=vh>主路的微软神经语音已经是新闻播报级，再往上就是「名家定制音色」——'
+   +'那属于云端 TTS 付费接口（微软 Azure、讯飞、阿里云、腾讯云）的能力范围，按字数计费，价格很低但需要申请密钥。'
+   +'目前页面<b>不内置任何第三方密钥</b>；如果你想加，把对应平台的 API Key 给我，我做成可填写的选项。</p>'
    +'</div></details>'
    +'</div>';
   return h;
+}
+/* 朗读环境体检 */
+function diagTts(){
+  var env=browserName();
+  if(isMobile()) env+='（手机）';
+  var vs=listZhVoices();
+  var d={env:env,ok:false,warn:false,audioState:'',sysState:'',voices:vs.length};
+  if(isWeChat()) d.env+=' · 微信内置';
+  if(audioReady){
+    d.ok=true;
+    d.audioState='可用 · '+AUDIO_VOICE+'（预生成神经语音，播音级）';
+  }else if(audioProbe){
+    d.warn=true;
+    d.audioState='检测中…（若失败会自动改用系统语音）';
+  }else{
+    d.warn=true;
+    d.audioState='待检测（点「重新体检」触发）';
+  }
+  if(!vs.length){
+    d.sysState='无可用中文语音';
+    if(!d.ok) d.warn=false;
+  }else{
+    var best=vs[0];
+    var n=(best.name||'')+' '+(best.voiceURI||'');
+    var hi=(!best.localService)||/natural|neural|online|增强|高音质|premium|enhanced/i.test(n);
+    d.sysState=best.name+(hi?' · 自然度高':' · 偏机械音');
+    if(!hi) d.warn=true;
+  }
+  return d;
 }
 function bindTtsCfg(){
   var box=document.getElementById('vcfg');
   if(!box) return;
   var sel=box.querySelector('.vsel');
-  sel.onchange=function(){
+  if(sel) sel.onchange=function(){
     storeTts('v',this.value);
     pickVoice();
     sampleVoice(this.value);
   };
   var ps=box.querySelector('.vpause');
-  ps.onchange=function(){
+  if(ps) ps.onchange=function(){
     pauseK=parseFloat(this.value)||1;
     storeTts('pause',pauseK);
   };
-  document.getElementById('vtry').onclick=function(){
-    var s=box.querySelector('.vsel');
-    sampleVoice(s?s.value:'');
+  var radios=box.querySelectorAll('input[name=vopt]');
+  for(var i=0;i<radios.length;i++){
+    radios[i].onchange=function(){
+      if(!this.checked) return;
+      AUDIO_VOICE=this.value;
+      storeTts('av',AUDIO_VOICE);
+      audioProbe=null;
+      mp3Broken=false;
+      probeAudio().then(function(ok){
+        audioReady=ok;
+        if(ok) sampleAudio();
+        refreshTtsDiag();
+      });
+    };
+  }
+  var vt=document.getElementById('vtry');
+  if(vt) vt.onclick=function(){
+    if(audioReady) sampleAudio();
+    else{
+      var s=box.querySelector('.vsel');
+      sampleVoice(s?s.value:'');
+    }
   };
-  document.getElementById('vreload').onclick=function(){
+  var vr=document.getElementById('vreload');
+  if(vr) vr.onclick=function(){
     pickVoice();
-    var wasHidden=box.hidden;
-    var w=document.getElementById('vcwrap');
-    if(!w) return;
-    mount(w,ttsCfgHtml());
-    bindTtsCfg();
-    var nb=document.getElementById('vcfg');
-    if(nb) nb.hidden=wasHidden;
+    audioProbe=null;
+    mp3Broken=false;
+    probeAudio().then(function(ok){
+      audioReady=ok;
+      refreshTtsDiag();
+      if(ok) sampleAudio();
+    });
   };
+}
+/* 刷新面板里的体检结果（直接改三行文本，不重建 DOM，避免丢失展开状态） */
+function refreshTtsDiag(){
+  var box=document.getElementById('vcfg');
+  if(!box) return;
+  var old=box.querySelector('.vdiag');
+  if(!old) return;
+  var d=diagTts();
+  var dclass=d.ok?'vd-good':(d.warn?'vd-warn':'vd-bad');
+  var spans=old.querySelectorAll('.vd-row span');
+  if(spans.length<3) return;
+  spans[0].textContent=d.env;
+  spans[1].textContent=d.audioState;
+  spans[1].className=dclass;
+  spans[2].textContent=d.sysState;
 }
 function bindRate(id,valId){
   var rs=document.getElementById(id);
@@ -3373,6 +3764,14 @@ function renderHome(){
   +'<div class="stat"><div><b>'+pr.done+'/'+pr.tot+'</b><span>完成项</span></div>'
   +'<div><b>'+Object.keys(store.wrong).length+'</b><span>错字</span></div>'
   +'<div><b>'+store.wordsBest+'/12</b><span>实词最高</span></div></div></section>';
+  if(isLocalFile()){
+    h+='<div class="wxbar"><span class="wx-t">📂 你现在是直接打开本地文件</span>'
+     +'这种打开方式下，浏览器不允许读取同目录的语音文件，朗读会退回手机系统音（听起来偏机械）。'
+     +'<b>要听播音级音质，请用网址打开本页</b>：'
+     +'<br>· GitHub 页面：<code>'+SITE_URL+'</code>'
+     +'<br>· 微信里也能听：先在系统浏览器打开一次上面的网址，之后从微信分享进去照样有声。'
+     +'</div>';
+  }
 
   var vs=vols(), fc='';
   for(var v=0;v<vs.length;v++){
@@ -3506,24 +3905,35 @@ function renderText(){
 
 function panelRead(t){
   var canTTS=('speechSynthesis' in window);
+  var amap=AUDIO_MAP[t.id]||{r:[],j:[]};
   var h='';
-  if(!canTTS){
+  if(isWeChat()){
+    h+='<div class="wxbar"><span class="wx-t">📱 微信里现在也能朗读了</span>'
+     +'以前微信打开没声音，是因为微信内置浏览器（安卓 X5 内核）会屏蔽网页语音接口——'
+     +'本页面已改为<b>预先合成好的真人级语音文件</b>播放，不受这个限制。'
+     +'<ol><li>直接点下面任意句子就能听，音质是新闻播报级，不是机器音。</li>'
+     +'<li>想换系统浏览器打开：右上角「···」→「在浏览器打开」（iPhone）；安卓微信点右上角「···」→「在浏览器中打开」。</li></ol>'
+     +'</div>';
+  }else if(!canTTS){
     h+='<div class="hint">当前浏览器不支持语音朗读，建议用 Edge 或 Chrome 打开本页。原文与注释、默写、练习均可正常使用。</div>';
   }
   h+='<div class="pbar">'
-   +'<button type="button" class="btn primary" id="playAll"'+(canTTS?'':' disabled')+'>▶ 全文朗读</button>'
+   +'<button type="button" class="btn primary" id="playAll">▶ 全文朗读</button>'
    +'<button type="button" class="btn" id="stopAll">■ 停止</button>'
    +'<button type="button" class="btn" id="vbtn">音色 · 朗读设置</button>'
    +'<span class="rate">语速 <input type="range" id="rate" min="0.5" max="1.2" step="0.05" value="0.85"><span id="rateV">0.85</span>×</span>'
    +'</div>';
   h+='<div id=vcwrap>'+ttsCfgHtml()+'</div>';
   h+='<div class="hint">点任意句子即可单独朗读；朗读时该句会高亮。已按标点做句读停顿（逗号短停、句号长停），并按教材注释纠正通假异读。古文建议语速 0.8 左右跟读。</div>';
+  var sid=0;
   for(var i=0;i<t.paras.length;i++){
     var para=t.paras[i];
-    var segs=para.p.match(/[^。！？；]+[。！？；]?/g)||[para.p];
+    var segs=para.p.match(/[^。！？；]+[。！？；]?[”’」』）]*/g)||[para.p];
     var inner='';
     for(var k=0;k<segs.length;k++){
-      inner+='<span class="s" data-say="1">'+escapeHtml(segs[k])+'</span>';
+      var aid=(amap.r&&amap.r[sid])?amap.r[sid]:'';
+      sid++;
+      inner+='<span class="s" data-say="1" data-aid="'+aid+'">'+escapeHtml(segs[k])+'</span>';
     }
     h+='<div class="para"><p class="txt serif">'+inner+'</p>'
       +'<p class="note"><b>注释</b>　'+escapeHtml(para.n)+'</p></div>';
@@ -3535,12 +3945,16 @@ function panelRead(t){
   if(vb) vb.onclick=function(){stopSpeak();var b=document.getElementById('vcfg');if(b) b.hidden=!b.hidden;};
   bindTtsCfg();
   bindRate('rate','rateV');
-  var all=document.querySelectorAll('.s');
+  var all=document.querySelectorAll('#panel .s');
+  var ids=[];
   for(var m=0;m<all.length;m++){
-    all[m].addEventListener('click',function(){speakOne(this);});
+    ids.push(all[m].getAttribute('data-aid')||'');
+    (function(el){
+      el.addEventListener('click',function(){speakOne(el,el.getAttribute('data-aid')||'');});
+    })(all[m]);
   }
   var pa=document.getElementById('playAll');
-  if(pa) pa.onclick=function(){stopSpeak();speaking=true;speakList(document.querySelectorAll('.s'),0);};
+  if(pa) pa.onclick=function(){stopSpeak();speaking=true;speakList(document.querySelectorAll('#panel .s'),0,ids);};
   document.getElementById('stopAll').onclick=stopSpeak;
   document.getElementById('markRead').onclick=function(){
     pg(t.id).read=true;save();render();
@@ -4067,6 +4481,7 @@ function panelJD(t){
     mount(document.getElementById('panel'),'<div class="hint">本篇讲读整理中。</div>');
     return;
   }
+  var amap=AUDIO_MAP[t.id]||{r:[],j:[]};
   var secs=[
     ['题解 · 背景', j.bg],
     ['主 旨', j.zh],
@@ -4075,16 +4490,19 @@ function panelJD(t){
     ['中考怎么考', j.kd]
   ];
   var h='<div class="pbar">'
-   +'<button type="button" class="btn primary" id="jdPlay"'+(canTTS?'':' disabled')+'>▶ 听讲解</button>'
+   +'<button type="button" class="btn primary" id="jdPlay">▶ 听讲解</button>'
    +'<button type="button" class="btn" id="jdStop">■ 停止</button>'
    +'<button type="button" class="btn" id="vbtn">音色 · 朗读设置</button>'
    +'<span class="rate">语速 <input type="range" id="jdRate" min="0.5" max="1.2" step="0.05" value="0.85"><span id="jdRateV">0.85</span>×</span>'
    +'</div>';
   h+='<div id=vcwrap>'+ttsCfgHtml()+'</div>';
   h+='<div class="hint">讲解依据教材与教参通行赏析整理（非名家署名原文）。点“听讲解”依次朗读五个板块，睡前、通勤可以只听不读；“中考怎么考”板块连着三年真题验证过，重点记。</div>';
+  var jid=0;
   for(var i=0;i<secs.length;i++){
+    /* 音频 id 用板块原始序号：bg=0 zh=1 xf=2 mj=3 kd=4，与生成脚本一致 */
+    var jaid=secs[i][1]?(t.id+'_j'+i):'';
     h+='<div class="jdsec"><h4>'+escapeHtml(secs[i][0])+'</h4>'
-     +'<p class="serif jd-t"><span class="s">'+escapeHtml(secs[i][1])+'</span></p></div>';
+     +'<p class="serif jd-t"><span class="s" data-aid="'+jaid+'">'+escapeHtml(secs[i][1])+'</span></p></div>';
   }
   mount(document.getElementById('panel'),h);
   var vb=document.getElementById('vbtn');
@@ -4092,11 +4510,15 @@ function panelJD(t){
   bindTtsCfg();
   bindRate('jdRate','jdRateV');
   var jds=document.querySelectorAll('#panel .jd-t .s');
+  var jids=[];
   for(var c=0;c<jds.length;c++){
-    jds[c].addEventListener('click',function(){speakOne(this);});
+    jids.push(jds[c].getAttribute('data-aid')||'');
+    (function(el){
+      el.addEventListener('click',function(){speakOne(el,el.getAttribute('data-aid')||'');});
+    })(jds[c]);
   }
   document.getElementById('jdPlay').onclick=function(){
-    stopSpeak();speaking=true;speakList(document.querySelectorAll('#panel .s'),0);
+    stopSpeak();speaking=true;speakList(document.querySelectorAll('#panel .jd-t .s'),0,jids);
   };
   document.getElementById('jdStop').onclick=stopSpeak;
 }
